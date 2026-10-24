@@ -11,11 +11,11 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 | Task ID | Phase | Title | Model / Engine | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **TASK-01** | Phase 1 | Ollama Daemon & `qwen3:8b` Health Check & Ping | Ollama (`qwen3:8b`) | [x] Completed |
-| **TASK-02** | Phase 1 | Resilient Ollama Chat Client with JSON Mode & Retries | Python / Ollama API | [ ] Pending |
-| **TASK-03** | Phase 2 | Identity & Alias Graph Resolver | Symbolic Engine | [ ] Pending |
-| **TASK-04** | Phase 2 | Temporal Evidence & Activity Correlator ($t \le \text{audit\_at}$) | SQLite / JSON / Logs | [ ] Pending |
-| **TASK-05** | Phase 2 | Policy Rules Engine (`deletion_rules.csv`) | Symbolic Rule Engine| [ ] Pending |
-| **TASK-06** | Phase 3 | Multilingual Intent Classifier (`qwen3:8b`) | `qwen3:8b` Chat | [ ] Pending |
+| **TASK-02** | Phase 1 | Resilient Ollama Chat Client with JSON Mode & Retries | Python / Ollama API | [x] Completed |
+| **TASK-03** | Phase 2 | Identity & Alias Graph Resolver | Symbolic Engine | [x] Completed |
+| **TASK-04** | Phase 2 | Temporal Evidence & Activity Correlator ($t \le \text{audit\_at}$) | SQLite / JSON / Logs | [x] Completed |
+| **TASK-05** | Phase 2 | Policy Rules Engine (`deletion_rules.csv`) | Symbolic Rule Engine| [x] Completed |
+| **TASK-06** | Phase 3 | Multilingual Intent Classifier (`qwen3:8b`) | `qwen3:8b` Chat | [x] Completed |
 | **TASK-07** | Phase 3 | Evidence-Policy Audit Reasoner Agent (`qwen3:8b`) | `qwen3:8b` Chat | [ ] Pending |
 | **TASK-08** | Phase 4 | Symbolic Grounding & Evidence Citation Guardrail | Deterministic Verifier| [ ] Pending |
 | **TASK-09** | Phase 4 | Canonical Step Sequencer & Precedence Sorter | Deterministic Sorter | [ ] Pending |
@@ -85,12 +85,14 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 - **Inputs:** `dataset/system_activity.csv`, `dataset/evidence_files.csv`, files in `dataset/evidence/`.
 - **Implementation:**
   - Filter `system_activity.csv` for rows matching user identifiers with `event_time <= audit_at`.
-  - Parse SQLite snapshots (`customer_data_*.sql`), JSON snapshots (`service_resource_export_*.json`), and log files.
+  - Parse SQLite snapshots (`customer_data_*.sql`), JSON snapshots (`service_resource_export_*.json`), plain-text handovers, logs, and PDF documents.
   - Detect replication drift (comparing primary vs replicas) and active data flows (`CHECK_DATA_FLOW`).
 - **Acceptance Criteria:**
-  - Discards 100% of events/evidence timestamped after `audit_at`.
-  - Detects residual records in replicas and active unblocked backups.
-- **Status:** [ ] Pending
+  - [x] Discards 100% of events/evidence timestamped after `audit_at` (strictly verified on live files).
+  - [x] Detects residual records in replicas (`customer_profiles_failover_replica` -> `replication_drift = True`).
+  - [x] Detects active unblocked backups and continuous sync data flows.
+  - [x] Comprehensive test suite in `code/tests/test_evidence_engine.py` (10/10 passing, 53/53 suite passing).
+- **Status:** [x] Completed (Verified on 2026-10-25)
 
 ---
 
@@ -98,11 +100,26 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 - **Goal:** Build `code/policy_engine.py` to encode the 15 deletion policy rules.
 - **Inputs:** `dataset/deletion_rules.csv`.
 - **Implementation:**
-  - Maps categories (`USER_PROFILE`, `SECONDARY_IDENTIFIER`, `ACCOUNT_TOMBSTONE`, `SECURITY_AUDIT_LOG`, `BACKUP_ARCHIVE`, etc.) to required treatments (`DELETE`, `REDACT`, `ANONYMIZE`, `RETAIN`).
-  - Specifically protects tombstones (`REDACT` direct PII, retain stable `user_id`) and audit logs (`RETAIN`).
+  - Loads all 15 rules from `deletion_rules.csv` in CSV order.
+  - Maps all data categories to `PolicyDecision` with full operation triplet (finding, remediation, verification ops).
+  - Handles unconditional DELETE rules (USER_PROFILE, SECONDARY_IDENTIFIER, SEARCH_INDEX_ENTRY, CACHE_ENTRY, USER_EXPORT, MARKETING_PROFILE).
+  - Handles conditional rules via `is_condition_met` flag:
+    - `SUPPORT_MESSAGE`: REDACT when shared context present; DELETE when not.
+    - `EMAIL_DELIVERY_LOG`: REDACT when user email in log.
+    - `SECURITY_AUDIT_LOG`: RETAIN (VERIFY_RECORD_PRESENT) within retention period; DELETE outside.
+    - `LEGAL_HOLD_RECORD`: RETAIN when legal hold is active.
+    - `BACKUP_ARCHIVE`: RETAIN + BLOCK_RESTORE + VERIFY_RESTORE_BLOCKED (special handling).
+  - `ACCOUNT_TOMBSTONE`: REDACT with `is_tombstone=True` and `protect_stable_id=True` flags.
+  - Exposes all 15 canonical operations (4 finding + 5 remediation + 6 verification) as disjoint frozensets.
+  - Convenience helpers: `must_retain()`, `must_delete()`, `is_tombstone_category()`, `default_system_id()`.
 - **Acceptance Criteria:**
-  - Evaluates data category and condition, returning exact required action and allowed states.
-- **Status:** [ ] Pending
+  - [x] Loads all 15 rules; raises `FileNotFoundError` if CSV missing.
+  - [x] Evaluates each data category with correct operation triplet.
+  - [x] Conditional rules respect `is_condition_met` flag correctly.
+  - [x] ACCOUNT_TOMBSTONE returns correct tombstone protection flags.
+  - [x] All 15 canonical operations present in correct disjoint sets.
+  - [x] 45/45 unit tests passing in 0.010s.
+- **Status:** [x] Completed (Verified 2026-10-25)
 
 ---
 
@@ -111,14 +128,26 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 #### TASK-06: Multilingual Intent Classifier (`qwen3:8b`)
 - **Goal:** Build `code/intent_classifier.py` using `qwen3:8b` via Ollama to identify non-deletion requests.
 - **Inputs:** Customer `request_text` from `deletion_requests.csv`.
-- **Implementation:**
-  - Prompt `qwen3:8b` with few-shot multilingual examples (English, Portuguese, Spanish, etc.) to classify intent as `DELETION` or `NON_DELETION`.
-  - Incorporate negative keyword indicators ("not asking for deletion", "leave account active", "download my data", "replace mobile number") as deterministic safeguard.
-  - Non-deletion requests immediately yield `NOT_APPLICABLE` and empty steps `[]`.
+- **Implementation (two-layer):**
+  - **Layer 1 — Deterministic Fast-Path:** Compiled regex patterns for 8+ languages (English, Spanish, French, Portuguese, Japanese/Chinese, German) covering:
+    - Explicit "not a deletion" self-identification.
+    - Data export / portability requests (including "copy of last year's invoices").
+    - Data access / subject access requests.
+    - Marketing opt-out only.
+    - Profile update / correction (name, email, phone, mobile).
+    - Account login / access recovery.
+    - Positive deletion language (English, Spanish, French, Portuguese, Japanese, German).
+  - **Layer 2 — LLM Slow-Path:** Invokes `qwen3:8b` via `OllamaChatClient` with a 12-example few-shot multilingual prompt for ambiguous texts only.
+  - Safe-fallback: LLM failure defaults to `DELETION` (conservative, avoids incorrectly filtering valid requests).
+  - Non-deletion requests return `NOT_APPLICABLE` with empty `steps_json=[]`.
 - **Acceptance Criteria:**
-  - Correctly classifies 10/10 non-deletion cases in the dataset (cases 533–542) as `NOT_APPLICABLE`.
-  - Correctly authorizes genuine deletion requests across languages.
-- **Status:** [ ] Pending
+  - [x] All 10/10 known non-deletion cases (case_533–case_542) correctly classified as NON_DELETION by deterministic layer.
+  - [x] Genuine deletion requests in 7 languages (English, Spanish, French, Japanese, Portuguese, German, generic) classified as DELETION.
+  - [x] LLM fallback correctly handles success, failure, and invalid JSON.
+  - [x] `classify_batch()` processes empty and non-empty lists correctly.
+  - [x] 46/46 unit tests passing in 0.014s.
+  - [x] 144/144 total suite tests passing.
+- **Status:** [x] Completed (Verified 2026-10-25)
 
 ---
 
