@@ -54,10 +54,11 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
   - Token tracking (prompt tokens, eval tokens, latency) to support `usage_report.md`.
   - Fallback mechanism if Ollama is unreachable.
 - **Acceptance Criteria:**
-  - Unit test verifies successful JSON response parsing.
-  - Simulating a transient timeout triggers retry without crashing.
-  - Accurately increments token counters.
-- **Status:** [ ] Pending
+  - [x] Unit test verifies successful JSON response parsing across multiple formats (direct, markdown fences, wrapped).
+  - [x] Simulating a transient timeout/URLError triggers retry without crashing, with exponential backoff.
+  - [x] Accurately increments token counters (prompt tokens, eval tokens, latency, duration).
+  - [x] Live integration test with local Ollama (`qwen3:8b`) returns verified JSON output and usage metrics.
+- **Status:** [x] Completed (Verified on 2026-10-25)
 
 ---
 
