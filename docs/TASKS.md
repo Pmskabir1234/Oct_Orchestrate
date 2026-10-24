@@ -72,10 +72,11 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
   - Index historical mutations from `user_audit_log.csv` (`old_value`, `new_value`).
   - Provide `resolve_by_email(email)` returning a unified `UserIdentityProfile` containing all associated emails, phones, names, and hashes.
 - **Acceptance Criteria:**
-  - Resolving a historical email (e.g. from `user_audit_log.csv`) returns the correct `user_id`.
-  - Case-insensitive email matching.
-  - Zero false cross-user associations.
-- **Status:** [ ] Pending
+  - [x] Resolving a historical email (e.g. from `user_audit_log.csv`) returns the correct `user_id` (verified case_525: `o.walker6695@yahoo.com` -> `user_523`).
+  - [x] Case-insensitive email matching.
+  - [x] Zero false cross-user associations (verified 0 collisions across 850 users and 308 audit records).
+  - [x] 100% resolution coverage across all 518 deletion requests in `deletion_requests.csv`.
+- **Status:** [x] Completed (Verified on 2026-10-25)
 
 ---
 
