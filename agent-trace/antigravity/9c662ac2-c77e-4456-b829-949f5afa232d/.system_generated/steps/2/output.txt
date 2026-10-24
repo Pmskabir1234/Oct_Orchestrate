@@ -1,0 +1,15 @@
+
+The command exited with code 0.
+Output:
+
+
+    Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate
+
+
+Mode                 LastWriteTime         Length Name                                                                                                                    
+----                 -------------         ------ ----                                                                                                                    
+d-----        24-10-2026     18:43                Oct_Orchestrate                                                                                                         
+d-----        24-10-2026     18:52                venv                                                                                                                    
+
+
+

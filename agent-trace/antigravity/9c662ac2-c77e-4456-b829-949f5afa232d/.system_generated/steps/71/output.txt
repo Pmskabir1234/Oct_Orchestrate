@@ -1,0 +1,27 @@
+
+The command exited with code 0.
+Output:
+Sample JSON file: Oct_Orchestrate/dataset/evidence/records\connector_configurations_20260812.json
+JSON snippet: {
+  "exported_at": "2026-08-12T09:00:00Z",
+  "origin": "integration_management_service",
+  "record_count": 39,
+  "records": [
+    {
+      "recorded_at": "2026-08-12T09:00:00Z",
+      "system": "account_service",
+      "resource_id": "account_1084",
+      "record_type": "USER_PROFILE",
+      "result"
+Sample TXT file: Oct_Orchestrate/dataset/evidence/records\customer_account_handover_20261001.txt
+TXT snippet: CUSTOMER PLATFORM - SHIFT HANDOVER
+Snapshot: 2026-10-01T12:00:00Z
+
+Account and downstream checks completed during the shift:
+
+- 2026-10-01T12:00:00Z | account_service | account_146 | USER_PROFILE | NOT_FOUND | e.lindberg18@yahoo.com
+- 2026-10-01T12:00:00Z | account_service | account_1810 | USER_PROF
+Sample LOG file: Oct_Orchestrate/dataset/evidence/logs\application_trace_ap_northeast_20260730.log
+LOG snippet: 2026-07-28T05:51:16Z [DEBUG] [log_router] [collector-9] export_started: instance="collector-9" sources="platform_services" expected_source_events="87"
+2026-07-28T05:51:18Z [DEBUG] [account_service] [tr-6074163] profile_lookup_started: instance="account-5" pod="account-886d" region="eu-west-1" lookup
+

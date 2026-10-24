@@ -1,0 +1,17 @@
+
+The command exited with code 0.
+Output:
+Total requests: 518
+Sample request texts:
+case_33 -> Please close my account and process the associated personal-data deletion. Pleas
+case_34 -> I would like the account associated with this address to be erased. Please handl
+case_35 -> Please close my account and process the associated personal-data deletion. Pleas
+case_36 -> Please close my account and process the associated personal-data deletion. Pleas
+case_37 -> I want to close this account and have its associated personal data deleted. Plea
+Potential non-deletion / not applicable requests found: 38
+case_53 : Please erase the account linked to this email address. Please apply the correct treatment to records covered by the request. Please send a confirmation after the process finishes.
+case_63 : Please permanently delete the account associated with this email address. Please apply the correct treatment to records covered by the request. Please confirm when the review is complete.
+case_73 : Please permanently delete the account associated with this email address. Please apply the correct treatment to records covered by the request. Please confirm when the review is complete.
+case_90 : Please treat this message as a request for permanent account deletion. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_103 : I am requesting deletion of the account registered to this email address. Please apply the correct treatment to records covered by the request. A short confirmation when the process is complete is sufficient.
+

@@ -1,0 +1,10 @@
+
+The command exited with code 0.
+Output:
+Found 5 activities for case_11 resources:
+{'activity_id': 'activity_3801', 'event_time': '2026-09-12T11:04:43Z', 'event_type': 'DELETE_RECORD', 'source_system': 'deletion_worker', 'target_system': 'account_service', 'resource_id': 'account_4248', 'reported_result': 'SUCCESS', 'details': 'Deletion worker submitted primary profile account_4248 to account_service.'}
+{'activity_id': 'activity_3814', 'event_time': '2026-09-12T12:55:35Z', 'event_type': 'DELETE_RECORD', 'source_system': 'deletion_worker', 'target_system': 'search_service', 'resource_id': 'search_052', 'reported_result': 'FAILED', 'details': 'Deletion worker received the final result for search_052 from search_service.'}
+{'activity_id': 'activity_3815', 'event_time': '2026-09-12T13:14:05Z', 'event_type': 'REDACT_RECORD', 'source_system': 'deletion_worker', 'target_system': 'support_platform', 'resource_id': 'support_864', 'reported_result': 'FAILED', 'details': 'Deletion worker received the final result for support_864 from support_platform.'}
+{'activity_id': 'activity_3816', 'event_time': '2026-09-12T13:33:34Z', 'event_type': 'ANONYMIZE_RECORD', 'source_system': 'deletion_worker', 'target_system': 'analytics_platform', 'resource_id': 'analytics_2034', 'reported_result': 'FAILED', 'details': 'Deletion worker received the final result for analytics_2034 from analytics_platform.'}
+{'activity_id': 'activity_3817', 'event_time': '2026-09-12T13:52:04Z', 'event_type': 'CHECK_DATA_FLOW', 'source_system': 'deletion_worker', 'target_system': 'integration_service', 'resource_id': 'data_flow_9522', 'reported_result': 'SUCCESS', 'details': 'Connector status check confirmed that data flow data_flow_9522 remains enabled.'}
+

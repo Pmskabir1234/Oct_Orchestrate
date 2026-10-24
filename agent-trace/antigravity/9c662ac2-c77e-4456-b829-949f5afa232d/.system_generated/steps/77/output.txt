@@ -1,0 +1,34 @@
+
+The command exited with code 0.
+Output:
+case_521 -> I would like to submit a request to delete this account and its personal data. Please complete the normal identity and data review for this request. Please send a confirmation after the process finishes.
+case_522 -> Solicito a exclusão permanente da conta associada a este e-mail. Verifiquem os identificadores atuais e anteriores conforme o processo de privacidade. Por favor, confirmem o resultado quando a análise terminar.
+case_523 -> I would like the account associated with this address to be erased. Please ensure the request is applied to the relevant account records. A short confirmation when the process is complete is sufficient.
+case_524 -> Please process a permanent account-deletion request for this email address. Please handle any copies that fall within the scope of the deletion request. I would appreciate confirmation of the final outcome.
+case_525 -> Please erase the account linked to this email address. Please include information linked through current or earlier account identifiers. A short confirmation when the process is complete is sufficient.
+case_526 -> Please process a permanent account-deletion request for this email address. Please review the account data that is eligible for deletion or de-identification. Please confirm when the review is complete.
+case_527 -> Please treat this message as a request for permanent account deletion. Please apply the request across the systems covered by your deletion policy. I would appreciate confirmation of the final outcome.
+case_528 -> Please erase the account linked to this email address. Please handle any copies that fall within the scope of the deletion request. Please confirm when the review is complete.
+case_529 -> I would like to submit a request to delete this account and its personal data. Please handle any copies that fall within the scope of the deletion request. I would appreciate confirmation of the final outcome.
+case_530 -> Please permanently delete the account associated with this email address. Please include information linked through current or earlier account identifiers. Please contact me if you need information to verify the request.
+case_531 -> I would like the account associated with this address to be erased. Please check the records connected to the account before confirming completion. Please confirm the result after completing the required checks.
+case_532 -> I am asking you to remove my account and the personal information linked to it. Please review any identifiers connected to this account as part of the request. Let me know when the request has been completed.
+case_533 -> The mobile number on my profile is out of date. Please replace it with the new one and leave the account active.
+case_534 -> Please stop the promotional emails. I still need the account and my order history, so I am not asking for deletion.
+case_535 -> I'd like to download my account information in a portable format. Please keep the account as it is.
+case_536 -> I can't access my profile and need help resetting the login. Do not close the account.
+case_537 -> My surname is misspelled on the account. Can you correct it without removing any of my records?
+case_538 -> Please remove me from marketing lists only. I still want receipts and service messages for this account.
+case_539 -> Can you tell me what personal information you hold about me? This is an information request, not a request to erase it.
+case_540 -> I need a copy of last year's invoices for my records. Please leave my profile and purchase history in place.
+case_541 -> Please change the email address used for this account. I want to continue using the service.
+case_542 -> Could you send me a copy of the information held on my account? I still use it, so please don't delete or change anything.
+case_543 -> Please process a permanent account-deletion request for this email address. Please apply the correct treatment to records covered by the request. I would appreciate confirmation of the final outcome.
+case_544 -> Please begin the deletion process for the account using this email address. Please ensure the request is applied to the relevant account records. A short confirmation when the process is complete is sufficient.
+case_545 -> Please permanently delete the account associated with this email address. Please apply the request across the systems covered by your deletion policy. I would appreciate confirmation of the final outcome.
+case_546 -> Solicito a exclusão permanente da conta associada a este e-mail. Verifiquem os identificadores atuais e anteriores conforme o processo de privacidade. Por favor, confirmem o resultado quando a análise terminar.
+case_547 -> Please permanently delete the account associated with this email address. Please process this under the standard personal-data deletion procedure. Please let me know once the request has been reviewed.
+case_548 -> Please permanently delete the account associated with this email address. Please complete the normal identity and data review for this request. Let me know when the request has been completed.
+case_549 -> Please treat this message as a request for permanent account deletion. Please review any identifiers connected to this account as part of the request. Please confirm when the review is complete.
+case_550 -> Please begin the deletion process for the account using this email address. Please follow the applicable retention and deletion requirements for the account. Please let me know once the request has been reviewed.
+

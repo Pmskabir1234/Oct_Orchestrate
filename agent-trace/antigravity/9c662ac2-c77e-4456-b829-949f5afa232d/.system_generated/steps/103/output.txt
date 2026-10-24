@@ -1,0 +1,106 @@
+The following changes were made by the replace_file_content tool to: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\code\evaluation\main.py. If relevant, proactively run terminal commands to execute this code for the USER. Don't ask for permission.
+[diff_block_start]
+@@ -242,6 +242,32 @@
+                 step_res.evidence_matches
+             )
+ 
++        # If predictions were for deletion_requests.csv (cases 33-550) while truth is sample_output.csv (cases 1-32),
++        # benchmark directly by running the agent on sample_deletion_requests.csv
++        if evaluated_cases == 0:
++            sample_req_p = self.ground_truth_path.parent / "sample_deletion_requests.csv"
++            if sample_req_p.exists():
++                from code.main import DeletionAuditAgent, DeletionRequest
++                agent = DeletionAuditAgent(self.ground_truth_path.parent)
++                sample_preds = {}
++                with open(sample_req_p, mode="r", encoding="utf-8") as f:
++                    for row in csv.DictReader(f):
++                        req = DeletionRequest(
++                            case_id=row["case_id"].strip(),
++                            email=row["email"].strip(),
++                            requested_at=row["requested_at"].strip(),
++                            reported_status=row["reported_status"].strip(),
++                            reported_at=row["reported_at"].strip(),
++                            audit_at=row["audit_at"].strip(),
++                            request_text=row["request_text"].strip(),
++                        )
++                        res = agent.audit_case(req)
++                        sample_preds[res.case_id] = {
++                            "deletion_status": res.deletion_status,
++                            "steps": [s.to_dict() for s in res.steps],
++                        }
++                return self.evaluate_dict_predictions(sample_preds)
++
+         status_acc = (status_matches / evaluated_cases) if evaluated_cases > 0 else 0.0
+         seq_acc = (seq_valid_cases / evaluated_cases) if evaluated_cases > 0 else 0.0
+         field_acc = (total_field_matches / total_field_checks) if total_field_checks > 0 else 0.0
+@@ -264,6 +264,67 @@
+             custom_case_results=custom_results,
+         )
+ 
++    def evaluate_dict_predictions(self, predictions: Dict[str, Dict[str, Any]]) -> EvaluationSummary:
++        """Evaluates in-memory dictionary of predictions against canonical ground truth."""
++        evaluated_cases = 0
++        status_matches = 0
++        seq_valid_cases = 0
++
++        total_exp_steps = 0
++        total_pred_steps = 0
++        total_matched_steps = 0
++        total_field_checks = 0
++        total_field_matches = 0
++
++        for case_id, exp_data in self.ground_truth.items():
++            if case_id not in predictions:
++                continue
++            evaluated_cases += 1
++            pred_data = predictions[case_id]
++
++            if pred_data["deletion_status"] == exp_data["deletion_status"]:
++                status_matches += 1
++
++            step_res = self.compare_steps(exp_data["steps"], pred_data["steps"])
++            if step_res.sequence_valid:
++                seq_valid_cases += 1
++
++            total_exp_steps += step_res.total_expected_steps
++            total_pred_steps += step_res.total_predicted_steps
++            total_matched_steps += step_res.matched_steps
++
++            total_field_checks += (step_res.total_expected_steps * 6)
++            total_field_matches += (
++                step_res.phase_matches +
++                step_res.system_matches +
++                step_res.resource_matches +
++                step_res.operation_matches +
++                step_res.state_matches +
++                step_res.evidence_matches
++            )
++
++        status_acc = (status_matches / evaluated_cases) if evaluated_cases > 0 else 0.0
++        seq_acc = (seq_valid_cases / evaluated_cases) if evaluated_cases > 0 else 0.0
++        field_acc = (total_field_matches / total_field_checks) if total_field_checks > 0 else 0.0
++
++        precision = (total_matched_steps / total_pred_steps) if total_pred_steps > 0 else 0.0
++        recall = (total_matched_steps / total_exp_steps) if total_exp_steps > 0 else 0.0
++        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
++
++        custom_results = self.evaluate_custom_test_cases()
++
++        return EvaluationSummary(
++            total_cases=evaluated_cases,
++            status_matches=status_matches,
++            status_accuracy=status_acc,
++            field_accuracy=field_acc,
++            sequence_accuracy=seq_acc,
++            step_precision=precision,
++            step_recall=recall,
++            step_f1=f1,
++            custom_case_results=custom_results,
++        )
++
+     @staticmethod
+     def evaluate_custom_test_cases() -> List[Dict[str, Any]]:
+         """
+[diff_block_end]
+
+Please note that the above snippet only shows the MODIFIED lines from the last change. It shows up to 3 lines of unchanged lines before and after the modified lines. The actual file contents may have many more lines not shown.

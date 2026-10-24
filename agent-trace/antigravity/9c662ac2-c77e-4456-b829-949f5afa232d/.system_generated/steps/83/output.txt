@@ -1,0 +1,6 @@
+
+The command exited with code 0.
+Output:
+Total sample resources: 111
+Sample resources present in system_activity.csv: 85 / 111
+

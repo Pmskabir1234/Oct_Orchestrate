@@ -1,0 +1,15 @@
+
+The command exited with code 0.
+Output:
+Total not applicable cases detected: 10
+case_533 : The mobile number on my profile is out of date. Please replace it with the new one and leave the account active.
+case_534 : Please stop the promotional emails. I still need the account and my order history, so I am not asking for deletion.
+case_535 : I'd like to download my account information in a portable format. Please keep the account as it is.
+case_536 : I can't access my profile and need help resetting the login. Do not close the account.
+case_537 : My surname is misspelled on the account. Can you correct it without removing any of my records?
+case_538 : Please remove me from marketing lists only. I still want receipts and service messages for this account.
+case_539 : Can you tell me what personal information you hold about me? This is an information request, not a request to erase it.
+case_540 : I need a copy of last year's invoices for my records. Please leave my profile and purchase history in place.
+case_541 : Please change the email address used for this account. I want to continue using the service.
+case_542 : Could you send me a copy of the information held on my account? I still use it, so please don't delete or change anything.
+

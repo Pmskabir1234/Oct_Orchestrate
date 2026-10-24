@@ -1,0 +1,18 @@
+
+The command exited with code 0.
+Output:
+Suspect non-deletion requests: 13
+case_90: Please treat this message as a request for permanent account deletion. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_103: I am requesting deletion of the account registered to this email address. Please apply the correct treatment to records covered by the request. A short confirmation when the process is complete is sufficient.
+case_192: Please treat this message as a request for permanent account deletion. Please apply the correct treatment to records covered by the request. Please contact me if you need information to verify the request.
+case_289: Please begin the deletion process for the account using this email address. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_320: Please process a permanent account-deletion request for this email address. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_331: Please process a permanent account-deletion request for this email address. Please apply the correct treatment to records covered by the request. A short confirmation when the process is complete is sufficient.
+case_348: Please treat this message as a request for permanent account deletion. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_431: Please treat this message as a request for permanent account deletion. Please apply the correct treatment to records covered by the request. Please confirm the result after completing the required checks.
+case_514: Please begin the deletion process for the account using this email address. Please apply the correct treatment to records covered by the request. Let me know when the request has been completed.
+case_535: I'd like to download my account information in a portable format. Please keep the account as it is.
+case_537: My surname is misspelled on the account. Can you correct it without removing any of my records?
+case_540: I need a copy of last year's invoices for my records. Please leave my profile and purchase history in place.
+case_543: Please process a permanent account-deletion request for this email address. Please apply the correct treatment to records covered by the request. I would appreciate confirmation of the final outcome.
+

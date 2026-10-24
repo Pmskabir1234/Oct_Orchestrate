@@ -1,0 +1,19 @@
+The following changes were made by the replace_file_content tool to: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\code\evaluation\main.py. If relevant, proactively run terminal commands to execute this code for the USER. Don't ask for permission.
+[diff_block_start]
+@@ -247,7 +247,12 @@
+         if evaluated_cases == 0:
+             sample_req_p = self.ground_truth_path.parent / "sample_deletion_requests.csv"
+             if sample_req_p.exists():
+-                from code.main import DeletionAuditAgent, DeletionRequest
++                code_dir = Path(__file__).resolve().parent.parent
++                if str(code_dir) not in sys.path:
++                    sys.path.insert(0, str(code_dir))
++                import main as runner_main
++                DeletionAuditAgent = runner_main.DeletionAuditAgent
++                DeletionRequest = runner_main.DeletionRequest
+                 agent = DeletionAuditAgent(self.ground_truth_path.parent)
+                 sample_preds = {}
+                 with open(sample_req_p, mode="r", encoding="utf-8") as f:
+[diff_block_end]
+
+Please note that the above snippet only shows the MODIFIED lines from the last change. It shows up to 3 lines of unchanged lines before and after the modified lines. The actual file contents may have many more lines not shown.

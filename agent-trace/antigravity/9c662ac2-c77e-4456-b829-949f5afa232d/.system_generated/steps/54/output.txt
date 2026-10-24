@@ -1,0 +1,14 @@
+
+The command exited with code 1.
+Output:
+Traceback (most recent call last):
+  File "<string>", line 17, in <module>
+    print(cid, '->', txt)
+    ~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\saaad kabir\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\uc774' in position 0: character maps to <undefined>
+Cases without obvious deletion keywords: 30
+case_54 -> Solicito a exclus�o permanente da conta associada a este e-mail. Verifiquem os identificadores atuais e anteriores conforme o processo de privacidade. Por favor, confirmem o resultado quando a an�lise terminar.
+case_66 -> 

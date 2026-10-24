@@ -1,0 +1,6 @@
+
+The command exited with code 0.
+Output:
+Total sample output rows: 32
+Status distribution: {'COMPLETE': 10, 'INCOMPLETE': 22}
+

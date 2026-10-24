@@ -1,0 +1,11 @@
+
+The command exited with code 0.
+Output:
+Missing from system_activity: ['audit_record_3830', 'audit_record_4816', 'audit_record_1797', 'audit_record_5416', 'audit_record_451', 'audit_record_3482', 'audit_record_6793', 'audit_record_6645', 'account_004', 'audit_record_4128']
+Missing resources found in evidence files: 22 / 26
+audit_record_3830 found in: ['customer_data_snapshot_bundle_20260917.json', 'service_resource_export_20260915_114455.json']
+audit_record_4816 found in: ['customer_account_handover_20261001.txt']
+audit_record_1797 found in: ['service_events_ap_south_20260915.log']
+audit_record_5416 found in: ['customer_data_snapshot_bundle_20260917.json', 'service_resource_export_20260915_114455.json']
+audit_record_451 found in: ['customer_data_snapshot_bundle_20260917.json', 'service_resource_export_20260915_114455.json']
+

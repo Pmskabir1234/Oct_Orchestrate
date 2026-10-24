@@ -1,0 +1,8 @@
+
+The command exited with code 0.
+Output:
+Read 32 sample output rows successfully.
+case_01 COMPLETE [{"evidence_id":"evidence_54","operation":"VERIFY_RECORD_ABS
+case_02 COMPLETE [{"evidence_id":"evidence_54","operation":"VERIFY_RECORD_ABS
+case_03 COMPLETE [{"step_no":1,"phase":"VERIFICATION","system_id":"account_se
+

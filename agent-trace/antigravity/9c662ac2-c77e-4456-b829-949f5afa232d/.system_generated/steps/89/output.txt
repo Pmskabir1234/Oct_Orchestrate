@@ -1,0 +1,14 @@
+
+The command exited with code 0.
+Output:
+evidence_54 -> {'file_id': 'evidence_54', 'file_path': 'evidence/databases/customer_accounts_failover_replica_20260902.sql', 'origin': 'customer_account_failover_replica_capture', 'captured_at': '2026-09-02T23:00:00Z'}
+evidence_56 -> {'file_id': 'evidence_56', 'file_path': 'evidence/records/customer_analytics_report_20260907.json', 'origin': 'analytics_platform', 'captured_at': '2026-09-07T09:45:00Z'}
+evidence_57 -> {'file_id': 'evidence_57', 'file_path': 'evidence/databases/customer_search_primary_20260910.sql', 'origin': 'customer_search_primary_capture', 'captured_at': '2026-09-10T08:45:00Z'}
+evidence_58 -> {'file_id': 'evidence_58', 'file_path': 'evidence/documents/delivery_correction_attachment.pdf', 'origin': 'support_platform', 'captured_at': '2026-09-12T07:30:00Z'}
+evidence_59 -> {'file_id': 'evidence_59', 'file_path': 'evidence/records/customer_export_jobs_20260914.json', 'origin': 'export_service', 'captured_at': '2026-09-14T15:40:00Z'}
+evidence_61 -> {'file_id': 'evidence_61', 'file_path': 'evidence/logs/support_replica.log', 'origin': 'support_platform', 'captured_at': '2026-09-17T22:00:19Z'}
+evidence_92 -> {'file_id': 'evidence_92', 'file_path': 'evidence/records/service_resource_export_20260915_114455.json', 'origin': 'service_resource_export', 'captured_at': '2026-09-15T11:44:55Z'}
+evidence_93 -> {'file_id': 'evidence_93', 'file_path': 'evidence/databases/customer_data_inventory_20260916.sql', 'origin': 'customer_data_inventory_capture', 'captured_at': '2026-09-16T08:37:39Z'}
+evidence_94 -> {'file_id': 'evidence_94', 'file_path': 'evidence/logs/resource_lookup_trace_20260926_103856.log', 'origin': 'service_readback_logs', 'captured_at': '2026-09-26T10:38:56Z'}
+evidence_51 -> {'file_id': 'evidence_51', 'file_path': 'evidence/records/customer_data_snapshot_bundle_20260915.json', 'origin': 'records_assurance_snapshot_bundle', 'captured_at': '2026-09-15T12:00:00Z'}
+

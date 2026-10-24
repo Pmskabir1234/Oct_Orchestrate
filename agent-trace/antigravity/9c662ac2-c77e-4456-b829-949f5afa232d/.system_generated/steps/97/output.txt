@@ -1,0 +1,10 @@
+
+The command exited with code 0.
+Output:
+Oct_Orchestrate/output.csv: Header=['case_id', 'deletion_status', 'steps_json'], Row count=518
+  First row: ['case_33', 'COMPLETE'] [{"step_no":1,"phase":"VERIFIC
+  Last row: ['case_550', 'COMPLETE'] [{"step_no":1,"phase":"VERIFIC
+output.csv: Header=['case_id', 'deletion_status', 'steps_json'], Row count=518
+  First row: ['case_33', 'COMPLETE'] [{"step_no":1,"phase":"VERIFIC
+  Last row: ['case_550', 'COMPLETE'] [{"step_no":1,"phase":"VERIFIC
+

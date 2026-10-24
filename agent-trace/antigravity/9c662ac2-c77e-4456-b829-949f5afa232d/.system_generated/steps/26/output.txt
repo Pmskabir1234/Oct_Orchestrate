@@ -1,0 +1,6 @@
+
+The command exited with code 0.
+Output:
+origin	https://github.com/Pmskabir1234/Oct_Orchestrate.git (fetch)
+origin	https://github.com/Pmskabir1234/Oct_Orchestrate.git (push)
+

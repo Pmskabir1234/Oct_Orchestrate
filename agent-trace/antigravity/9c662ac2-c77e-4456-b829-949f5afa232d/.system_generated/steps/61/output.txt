@@ -1,0 +1,9 @@
+
+The command exited with code 0.
+Output:
+databases: 24 files (e.g. ['customer_accounts_failover_replica_20260902.sql', 'customer_data_failover_replica_20260920.sql', 'customer_data_inventory_20260213.sql'])
+documents: 4 files (e.g. ['account_history_report_20260718.pdf', 'delivery_correction_attachment.pdf', 'legal_retention_register_20260529.pdf'])
+images: 11 files (e.g. ['account_admin_console_20260926.png', 'analytics_profile_view_20260713.png', 'backup_restore_console_20260429.png'])
+logs: 26 files (e.g. ['application_trace_ap_northeast_20260730.log', 'application_trace_eu_north_20260302.log', 'cloud_runtime_export_af_south_20260930.log'])
+records: 29 files (e.g. ['connector_configurations_20260812.json', 'customer_account_handover_20261001.txt', 'customer_analytics_report_20260907.json'])
+

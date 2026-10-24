@@ -1,0 +1,23 @@
+
+The command exited with code 0.
+Output:
+
+
+    Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\code
+
+
+Mode                 LastWriteTime         Length Name                                                                                                                    
+----                 -------------         ------ ----                                                                                                                    
+d-----        24-10-2026     18:43                evaluation                                                                                                              
+-a----        24-10-2026     18:43              0 main.py                                                                                                                 
+
+
+    Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\code\evaluation
+
+
+Mode                 LastWriteTime         Length Name                                                                                                                    
+----                 -------------         ------ ----                                                                                                                    
+-a----        24-10-2026     18:43              0 main.py                                                                                                                 
+
+
+

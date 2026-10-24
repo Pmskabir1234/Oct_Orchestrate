@@ -1,0 +1,21 @@
+
+The command exited with code 0.
+Output:
+[Ghost Data Audit] Starting Deletion Audit Agent...
+[Ghost Data Audit] Repository Root: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate
+[Ghost Data Audit] Dataset Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\dataset
+[Ghost Data Audit] Loaded 518 evaluation requests.
+  Processed 50/518 cases (current: case_82 -> COMPLETE)
+  Processed 100/518 cases (current: case_132 -> COMPLETE)
+  Processed 150/518 cases (current: case_182 -> COMPLETE)
+  Processed 200/518 cases (current: case_232 -> COMPLETE)
+  Processed 250/518 cases (current: case_282 -> COMPLETE)
+  Processed 300/518 cases (current: case_332 -> COMPLETE)
+  Processed 350/518 cases (current: case_382 -> COMPLETE)
+  Processed 400/518 cases (current: case_432 -> COMPLETE)
+  Processed 450/518 cases (current: case_482 -> COMPLETE)
+  Processed 500/518 cases (current: case_532 -> COMPLETE)
+  Processed 518/518 cases (current: case_550 -> COMPLETE)
+[Ghost Data Audit] Output successfully written to: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\output.csv
+[Ghost Data Audit] Total rows produced: 518
+

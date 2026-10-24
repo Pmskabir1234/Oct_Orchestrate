@@ -1,0 +1,23 @@
+
+The command exited with code 0.
+Output:
+
+
+    Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate\dataset
+
+
+Mode                 LastWriteTime         Length Name                                                                                                                    
+----                 -------------         ------ ----                                                                                                                    
+d-----        24-10-2026     18:43                evidence                                                                                                                
+-a----        24-10-2026     18:43         164183 deletion_requests.csv                                                                                                   
+-a----        24-10-2026     18:43           1055 deletion_rules.csv                                                                                                      
+-a----        24-10-2026     18:43          11184 evidence_files.csv                                                                                                      
+-a----        24-10-2026     18:43             36 output.csv                                                                                                              
+-a----        24-10-2026     18:43           9043 sample_deletion_requests.csv                                                                                            
+-a----        24-10-2026     18:43          38681 sample_output.csv                                                                                                       
+-a----        24-10-2026     18:43         661372 system_activity.csv                                                                                                     
+-a----        24-10-2026     18:43          37016 user_audit_log.csv                                                                                                      
+-a----        24-10-2026     18:43         127262 user_identities.csv                                                                                                     
+
+
+

@@ -1,0 +1,21 @@
+
+The command exited with code 0.
+Output:
+
+
+    Directory: C:\Users\saaad kabir\Desktop\Full Project\Oct_Orchestrate\Oct_Orchestrate
+
+
+Mode                 LastWriteTime         Length Name                                                                                                                    
+----                 -------------         ------ ----                                                                                                                    
+d--h--        24-10-2026     18:43                .git                                                                                                                    
+d-----        24-10-2026     18:43                code                                                                                                                    
+d-----        24-10-2026     18:43                dataset                                                                                                                 
+-a----        24-10-2026     18:43          23970 AGENTS.md                                                                                                               
+-a----        24-10-2026     18:43           8293 agent_trace_instructions.md                                                                                             
+-a----        24-10-2026     18:43             12 CLAUDE.md                                                                                                               
+-a----        24-10-2026     18:43           9198 problem_statement.md                                                                                                    
+-a----        24-10-2026     18:43           8543 README.md                                                                                                               
+
+
+

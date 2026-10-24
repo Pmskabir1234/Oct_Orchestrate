@@ -1,0 +1,24 @@
+
+The command exited with code 0.
+Output:
+=================================================================
+ Ghost Data Still Exists - Evaluation Benchmark Suite
+=================================================================
+Ground Truth : Oct_Orchestrate\dataset\sample_output.csv
+Predictions  : Oct_Orchestrate\output.csv
+-----------------------------------------------------------------
+Evaluated Cases: 0
+Status Matches : 0 / 0
+Status Accuracy: 0.00%
+Field Accuracy : 0.00%
+Sequence Acc   : 0.00%
+Step Precision : 0.00%
+Step Recall    : 0.00%
+Step F1 Score  : 0.00%
+-----------------------------------------------------------------
+Custom Evaluation Cases:
+  [PASS] custom_case_01: Account Tombstone with Lingering Search Index & Active Sync Flow -> INCOMPLETE
+  [PASS] custom_case_02: Data Portability Request with Explicit Account Retention -> NOT_APPLICABLE
+  [PASS] custom_case_03: Unblocked Backup Snapshot Posing Restore Re-creation Risk -> INCOMPLETE
+=================================================================
+
