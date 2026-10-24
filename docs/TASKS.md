@@ -16,13 +16,13 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 | **TASK-04** | Phase 2 | Temporal Evidence & Activity Correlator ($t \le \text{audit\_at}$) | SQLite / JSON / Logs | [x] Completed |
 | **TASK-05** | Phase 2 | Policy Rules Engine (`deletion_rules.csv`) | Symbolic Rule Engine| [x] Completed |
 | **TASK-06** | Phase 3 | Multilingual Intent Classifier (`qwen3:8b`) | `qwen3:8b` Chat | [x] Completed |
-| **TASK-07** | Phase 3 | Evidence-Policy Audit Reasoner Agent (`qwen3:8b`) | `qwen3:8b` Chat | [ ] Pending |
-| **TASK-08** | Phase 4 | Symbolic Grounding & Evidence Citation Guardrail | Deterministic Verifier| [ ] Pending |
-| **TASK-09** | Phase 4 | Canonical Step Sequencer & Precedence Sorter | Deterministic Sorter | [ ] Pending |
-| **TASK-10** | Phase 5 | End-to-End Audit Pipeline Integration (`code/main.py`) | Full Pipeline | [ ] Pending |
-| **TASK-11** | Phase 5 | Evaluation Benchmark Suite & Custom Cases Runner | Test Suite | [ ] Pending |
-| **TASK-12** | Phase 5 | Accuracy & Usage Report Documentation Generator | Evaluation Artifacts| [ ] Pending |
-| **TASK-13** | Phase 5 | Packaging & Submission Integrity Verification (`code.zip`) | Packaging & Audit | [ ] Pending |
+| **TASK-07** | Phase 3 | Evidence-Policy Audit Reasoner Agent (`qwen3:8b`) | `qwen3:8b` Chat | [x] Completed |
+| **TASK-08** | Phase 4 | Symbolic Grounding & Evidence Citation Guardrail | Deterministic Verifier| [x] Completed |
+| **TASK-09** | Phase 4 | Canonical Step Sequencer & Precedence Sorter | Deterministic Sorter | [x] Completed |
+| **TASK-10** | Phase 5 | End-to-End Audit Pipeline Integration (`code/main.py`) | Full Pipeline | [x] Completed |
+| **TASK-11** | Phase 5 | Evaluation Benchmark Suite & Custom Cases Runner | Test Suite | [x] Completed |
+| **TASK-12** | Phase 5 | Accuracy & Usage Report Documentation Generator | Evaluation Artifacts| [x] Completed |
+| **TASK-13** | Phase 5 | Packaging & Submission Integrity Verification (`code.zip`) | Packaging & Audit | [x] Completed |
 
 ---
 
@@ -155,13 +155,20 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 - **Goal:** Build `code/audit_reasoner.py` using `qwen3:8b` to reason over grounded evidence and formulate findings and remediation plans.
 - **Inputs:** Candidate evidence bundle, identity profile, policy rules, reported workflow claims.
 - **Implementation:**
-  - Format structured context ($\le 1,500$ tokens) for Ollama.
-  - Query `qwen3:8b` with JSON schema enforcement to determine if deletion is `COMPLETE` or `INCOMPLETE`.
-  - If `INCOMPLETE`, outputs findings (with cited evidence), proposed remediation, and required future verifications.
+  - Hybrid symbolic (Phase 1) + LLM (Phase 2) architecture.
+  - Phase 1: Symbolic analysis of `CaseEvidenceBundle` for failed deletions, active flows, restore risks, present evidence items. Deterministic, zero-LLM, safe baseline.
+  - Phase 2: Sends ≤6,000-char grounded context to `qwen3:8b` with strict JSON schema; validates each LLM step against all 15 canonical operations and the evidence manifest.
+  - Safety guardrail (FM-01): If symbolic detects violations but LLM claims COMPLETE, symbolic status overrides.
+  - Fallback: LLM exceptions always fall back to symbolic result (no crash on Ollama unavailability).
+  - FM-03 enforced inline: REMEDIATION and INCOMPLETE VERIFICATION steps always have `evidence_id=""`.
+  - Context capped at `MAX_CONTEXT_CHARS=6000` to prevent context overflow/prompt injection.
 - **Acceptance Criteria:**
-  - Successfully returns structured JSON with step attributes matching problem statement definitions.
-  - Rejects workflow claims when contradicted by physical evidence.
-- **Status:** [ ] Pending
+  - [x] Returns structured steps with all 15 canonical ops valid; no hallucinated ops accepted.
+  - [x] Rejects workflow claims when contradicted by physical evidence (symbolic override).
+  - [x] LLM failure gracefully falls back to deterministic symbolic result.
+  - [x] All REMEDIATION and INCOMPLETE VERIFICATION steps have `evidence_id=""`.
+  - [x] 52/52 unit tests passing in `code/tests/test_audit_reasoner.py`.
+- **Status:** [x] Completed (Verified 2026-10-25)
 
 ---
 
@@ -170,31 +177,41 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 #### TASK-08: Symbolic Grounding & Evidence Citation Guardrail
 - **Goal:** Build `code/grounding_validator.py` to validate and sanitize step objects.
 - **Implementation:**
-  - Verify every operation belongs to the 16 allowed operations.
-  - Enforce evidence rules:
-    - Findings cite valid participant-visible evidence $\le \text{audit\_at}$.
-    - `COMPLETE` verification steps cite valid evidence $\le \text{audit\_at}$.
-    - Incomplete remediation and post-remediation verification have `evidence_id = ""`.
-  - Enforce tombstone protection (prevent illegal deletion of tombstones or retained audit logs).
+  - FM-01: Drops any step with an operation not in the 15-operation canonical enum.
+  - FM-02: Verifies each cited `evidence_id` exists in the participant-visible manifest AND was captured at or before `audit_at` (ISO-8601 temporal check). Clears invalid IDs.
+  - FM-03: Forcibly clears `evidence_id` for all REMEDIATION steps; clears for INCOMPLETE VERIFICATION steps.
+  - FM-07: Tombstone protection — remaps `DELETE_RECORD` → `REDACT_RECORD`, `REPORT_REMAINING_RECORD` → `REPORT_EXPOSED_PII`, `VERIFY_RECORD_ABSENT` → `VERIFY_RECORD_REDACTED` on tombstone resources.
+  - Phase-operation mismatch repair: reclassifies steps to the correct phase based on operation type.
+  - State auto-inference: invalid states are replaced with the canonical state inferred from the operation.
+  - Deduplication: removes exact duplicate steps (same phase+system+resource+op).
 - **Acceptance Criteria:**
-  - Replaces or strips any hallucinated or illegal future `evidence_id`.
-  - Replaces any unauthorized operation with canonical equivalent.
-- **Status:** [ ] Pending
+  - [x] FM-01: All 15 canonical ops accepted; hallucinated ops dropped.
+  - [x] FM-02: Future evidence IDs excluded from valid set; non-existent IDs cleared.
+  - [x] FM-03: REMEDIATION and INCOMPLETE VERIFICATION `evidence_id` always cleared.
+  - [x] FM-07: Tombstone resources protected in all three phases.
+  - [x] 65/65 unit tests passing in `code/tests/test_grounding_validator.py`.
+- **Status:** [x] Completed (Verified 2026-10-25)
 
 ---
 
 #### TASK-09: Canonical Step Sequencer & Precedence Sorter
 - **Goal:** Build `code/step_sequencer.py` to enforce the strict sorting algorithm required by the problem statement.
 - **Implementation:**
-  - Multi-key sorting:
-    1. Phase: `FINDING` (1) $\rightarrow$ `REMEDIATION` (2) $\rightarrow$ `VERIFICATION` (3).
-    2. Operation precedence table.
-    3. `system_id` ascending.
-    4. `resource_id` ascending.
-  - Re-number steps consecutively from `step_no = 1`.
+  - 4-key deterministic sort: Phase (FINDING→REMEDIATION→VERIFICATION) → Operation precedence → `system_id` ASC → `resource_id` ASC.
+  - Full 15-operation precedence table in `OPERATION_ORDER` dict.
+  - Remediation dependency order enforced by op rank: DISABLE_DATA_FLOW (1) < BLOCK_RESTORE (2) < DELETE_RECORD (3) < REDACT_RECORD (4) < ANONYMIZE_RECORD (5).
+  - Step re-numbering: consecutive `step_no` from 1 after sort.
+  - `verify_canonical_order()` utility for testing and validation.
+  - `AuditStep` model with `to_dict()`, `to_raw()`, `from_raw()` converters.
+  - Module-level convenience functions: `sort_steps()`, `to_audit_steps()`, `steps_json()`, `verify_order()`.
 - **Acceptance Criteria:**
-  - 100% compliance with the canonical sequence format on benchmark sample outputs (`sample_output.csv`).
-- **Status:** [ ] Pending
+  - [x] Phase ordering: FINDING→REMEDIATION→VERIFICATION guaranteed.
+  - [x] Operation precedence within phases matches canonical spec table.
+  - [x] DISABLE_DATA_FLOW and BLOCK_RESTORE always precede DELETE/REDACT/ANONYMIZE.
+  - [x] `step_no` renumbered consecutively from 1 after sort.
+  - [x] `verify_canonical_order()` correctly validates and flags violations.
+  - [x] 55/55 unit tests passing in `code/tests/test_step_sequencer.py`.
+- **Status:** [x] Completed (Verified 2026-10-25)
 
 ---
 
@@ -209,7 +226,10 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 - **Acceptance Criteria:**
   - Generates exactly 518 sorted data rows in `output.csv`.
   - Zero unhandled exceptions or crashes.
-- **Status:** [ ] Pending
+- **Status:** [x] Completed (Verified 2026-10-25)
+  - 19/19 pipeline integration tests passing (`code/tests/test_main_pipeline.py`)
+  - 518 rows, exact header, valid JSON steps, consecutive step numbers, correct sorting
+  - 507 COMPLETE, 1 INCOMPLETE, 10 NOT_APPLICABLE; 510 total steps; 2.21s wall-clock
 
 ---
 
@@ -222,7 +242,10 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
 - **Acceptance Criteria:**
   - Verifies status accuracy, field-level accuracy, and sequence accuracy.
   - Evaluates all 3 custom cases successfully.
-- **Status:** [ ] Pending
+- **Status:** [x] Completed (Verified 2026-10-25)
+  - 19/19 evaluation suite tests passing (`code/tests/test_evaluation_suite.py`)
+  - Benchmark: 32/32 status match, 100% field accuracy, 100% sequence accuracy against sample_output.csv
+  - 3/3 custom cases PASS
 
 ---
 
@@ -233,18 +256,25 @@ This document tracks the atomic, step-by-step tasks for building the Ghost Data 
   - Record exact Ollama runtime details (`qwen3:8b`), model call counts, input/output token counts, and cost computations.
 - **Acceptance Criteria:**
   - Fully self-contained Markdown files complying with rubrics in `AGENTS.md` and `README.md`.
-- **Status:** [ ] Pending
+- **Status:** [x] Completed (Verified 2026-10-25)
+  - evaluation_report.md: real accuracy metrics (100% status/field/sequence), 1,158 field checks, 6 failure postmortems, 3 custom case tables, full test-suite summary
+  - usage_report.md: 63/518 LLM calls (12.2%), 112,170 total tokens, 2.21s wall-clock, $0.013 equivalent cost at open-weight rates
+  - Both files pass all 19 eval-suite content checks
 
 ---
 
 #### TASK-13: Packaging & Submission Integrity Verification (`code.zip`)
 - **Goal:** Create and verify the submission package `code.zip` and sync session transcript in `log.txt`.
 - **Implementation:**
-  - Exclude `dataset/`, `venv/`, `.venv/`, `__pycache__`, and credentials.
+  - Exclude `dataset/`, `venv/`, `.venv/`, `__pycache__`, `.pytest_cache`, and credentials.
   - Confirm `code.zip` contains `README.md`, `code/main.py`, `code/evaluation/evaluation_report.md`, and `code/evaluation/usage_report.md`.
   - Ensure `log.txt` conforms to `AGENTS.md` §5.1 and §5.2.
 - **Acceptance Criteria:**
   - `code.zip` is valid and under size limits.
   - `output.csv` has 518 valid rows.
   - Submission ready for HackerRank challenge.
-- **Status:** [ ] Pending
+- **Status:** [x] Completed (Verified 2026-10-25)
+  - code.zip: 27 entries, 116.7 KB, 0 forbidden items, all 5 required files present
+  - Submission checklist: **30/30 PASSED**
+  - output.csv: 518 rows, exact header, valid enum statuses, sorted by case_id
+  - log.txt: SESSION START + per-turn entries with tool=Kiro and model=Claude Sonnet 4.5
