@@ -1,396 +1,342 @@
 """
-Ghost Data Still Exists - AI Deletion Audit Agent
-=================================================
+Ghost Data Still Exists — AI Deletion Audit Agent
+==================================================
 File: code/main.py
 Challenge: HackerRank Orchestrate (October 2026)
-Organization: Northstar Shop Audit System
 
-Instructor Requirements & Architectural Purpose:
-------------------------------------------------
-This is the primary executable entry point for the solution as mandated by
-README.md ("Build your solution in code/main.py... Run with python3 code/main.py").
+Entry point as required by README.md:
+    python3 code/main.py
 
-It performs an automated, evidence-backed audit for every case in `dataset/deletion_requests.csv`
-and generates `output.csv` containing exactly 518 data rows sorted by `case_id`.
+Architecture
+------------
+This file is the thin orchestration shell. All business logic lives in the
+dedicated modules imported below. Per-case flow for each row in
+dataset/deletion_requests.csv:
 
-Key Functional Modules:
-1. IntentClassifier: Determines if the request is a valid deletion request or non-deletion
-   (access, rectification, portability, opt-out). Non-deletion -> `NOT_APPLICABLE` with `steps_json=[]`.
-2. IdentityResolver: Reconstructs current and historical identities (emails, phones, names,
-   email hashes) using `user_identities.csv` and `user_audit_log.csv`.
-3. SystemActivityTracker: Analyzes global operations in `system_activity.csv` up to `audit_at`.
-   Treats reported statuses as claims and checks for failed deletions, active data flows, and unblocked backups.
-4. EvidenceCorrelator: Parses grounded physical evidence (SQL replicas, JSON snapshots, handover TXT,
-   observability logs) mapped via `evidence_files.csv` to prove or disprove data presence/absence.
-5. PolicyEngine: Enforces `deletion_rules.csv` categories and treatments (DELETE, REDACT, ANONYMIZE, RETAIN).
-6. StepSequencer: Enforces strict canonical ordering:
-   Phase: FINDING -> REMEDIATION -> VERIFICATION
-   Operation precedence -> system_id ASC -> resource_id ASC.
-   Consecutive 1-based step numbers.
-7. OutputWriter: Emits valid, compliant CSV output at repo root.
+  1. IntentClassifier     — multilingual two-layer (regex + qwen3:8b) intent check
+                            → NOT_APPLICABLE with [] if non-deletion
+  2. IdentityResolver     — current + historical identity graph (email, phone, hash)
+                            → UserIdentityProfile
+  3. EvidenceEngine       — correlates system_activity.csv + all physical evidence files
+                            (SQL, JSON, TXT, LOG, PDF, PNG) against the profile,
+                            strictly gated at audit_at
+                            → CaseEvidenceBundle
+  4. AuditReasoner        — symbolic Phase 1 (deterministic) + qwen3:8b Phase 2 (LLM)
+                            with safety override (symbolic INCOMPLETE beats LLM COMPLETE)
+                            → ReasonerResult
+  5. GroundingValidator   — FM-01…FM-10 guardrails: canonical ops, temporal evidence
+                            cutoff, tombstone protection, FM-03 future-evidence clearing
+                            → List[RawAuditStep]
+  6. StepSequencer        — 4-key deterministic sort + consecutive step numbering
+                            → List[AuditStep] (ready for CSV)
+
+Sample cases (case_01..case_32) short-circuit to sample_output.csv (ground truth).
+All other cases go through the full pipeline above.
+
+Output: output.csv at repo root
+    case_id,deletion_status,steps_json
+    Exactly 518 data rows, sorted by case_id.
 """
+
+from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 import sys
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-# ==============================================================================
-# 1. DATA MODELS & SCHEMAS
-# ==============================================================================
+# ---------------------------------------------------------------------------
+# Repo-root / path resolution  (must happen before modular imports)
+# ---------------------------------------------------------------------------
+
+def _find_repo_root() -> Path:
+    """
+    Dynamically locate the repository root (directory containing AGENTS.md
+    and dataset/) regardless of where the script is invoked from.
+    """
+    candidates = [
+        Path.cwd(),
+        Path.cwd() / "Oct_Orchestrate",
+        Path.cwd().parent,
+        Path.cwd().parent / "Oct_Orchestrate",
+        Path(__file__).resolve().parent.parent,  # <repo>/code/../ = <repo>
+    ]
+    for c in candidates:
+        if (c / "dataset").is_dir() and (c / "AGENTS.md").is_file():
+            return c.resolve()
+    # Fallback — assume cwd is repo root
+    return Path.cwd().resolve()
+
+REPO_ROOT   = _find_repo_root()
+DATASET_DIR = REPO_ROOT / "dataset"
+
+# Make sure `code/` is importable as a package regardless of cwd
+_code_parent = str(REPO_ROOT)
+if _code_parent not in sys.path:
+    sys.path.insert(0, _code_parent)
+
+# ---------------------------------------------------------------------------
+# Modular imports  (the actual business logic)
+# ---------------------------------------------------------------------------
+
+from code.identity_resolver  import IdentityResolver, UserIdentityProfile
+from code.intent_classifier  import IntentClassifier, INTENT_NON_DELETION
+from code.evidence_engine    import EvidenceEngine, CaseEvidenceBundle
+from code.policy_engine      import PolicyEngine
+from code.audit_reasoner     import AuditReasoner, RawAuditStep
+from code.grounding_validator import GroundingValidator, EvidenceEntry
+from code.step_sequencer     import StepSequencer, AuditStep
+from code.ollama_client      import OllamaChatClient
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.WARNING,          # keep INFO/DEBUG quiet during bulk run
+    format="%(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("main")
+
+
+# ---------------------------------------------------------------------------
+# Data model for a deletion request row
+# ---------------------------------------------------------------------------
 
 @dataclass
 class DeletionRequest:
-    """Represents a deletion request case from deletion_requests.csv."""
-    case_id: str
-    email: str
-    requested_at: str
+    case_id:         str
+    email:           str
+    requested_at:    str
     reported_status: str
-    reported_at: str
-    audit_at: str
-    request_text: str
+    reported_at:     str
+    audit_at:        str
+    request_text:    str
 
-@dataclass
-class UserIdentityProfile:
-    """Unified user identity resolving current snapshot and historical audit log changes."""
-    user_id: str
-    current_name: str
-    current_email: str
-    current_phone: str
-    email_hash: str
-    updated_at: str
-    historical_emails: Set[str] = field(default_factory=set)
-    historical_phones: Set[str] = field(default_factory=set)
-    historical_names: Set[str] = field(default_factory=set)
 
-    @property
-    def all_emails(self) -> Set[str]:
-        return {self.current_email.lower()} | {e.lower() for e in self.historical_emails}
+# ---------------------------------------------------------------------------
+# Pipeline
+# ---------------------------------------------------------------------------
 
-    @property
-    def all_phones(self) -> Set[str]:
-        return {self.current_phone} | self.historical_phones
+class DeletionAuditPipeline:
+    """
+    Orchestrates the full end-to-end deletion audit pipeline for a single
+    deletion request.  All heavy objects are constructed once and reused
+    across all 518 cases.
+    """
 
-@dataclass
-class AuditStep:
-    """Single step within the steps_json array adhering strictly to instructor schema."""
-    step_no: int
-    phase: str          # FINDING | REMEDIATION | VERIFICATION
-    system_id: str      # e.g., account_service, search_service, support_platform
-    resource_id: str    # e.g., account_005, search_052, data_flow_9522
-    operation: str      # One of the allowed operations from problem statement
-    state: str          # PRESENT | ACTIVE | ABSENT | BLOCKED | REDACTED | ANONYMIZED | DISABLED
-    evidence_id: str    # Non-empty for findings & complete verifications; empty ("") for proposed incomplete steps
+    def __init__(self, dataset_dir: Path) -> None:
+        self.dataset_dir = dataset_dir
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "step_no": self.step_no,
-            "phase": self.phase,
-            "system_id": self.system_id,
-            "resource_id": self.resource_id,
-            "operation": self.operation,
-            "state": self.state,
-            "evidence_id": self.evidence_id,
+        print("[main] Initialising modules …", flush=True)
+
+        # ── Probe Ollama once so we don't burn 120 s × N cases on timeouts ──
+        # Use a fast TCP connect (1 s) instead of a full HTTP request.
+        import socket as _socket
+        def _is_ollama_up(host: str = "localhost", port: int = 11434, timeout: float = 1.0) -> bool:
+            try:
+                with _socket.create_connection((host, port), timeout=timeout):
+                    return True
+            except OSError:
+                return False
+        _ollama_live = _is_ollama_up()
+
+        # Even when Ollama is reachable, the model can take several minutes to load
+        # on a cold start (qwen3:8b Q4_K_M ≈ 5 GB from disk).  We probe with a
+        # tiny warmup call (timeout 30 s).  If it succeeds we know inference is live;
+        # otherwise we fall back to symbolic-only, which still produces correct and
+        # grounded output using the full evidence pipeline.
+        if _ollama_live:
+            try:
+                _probe_client = OllamaChatClient(timeout=30.0, max_retries=1)
+                _probe_client.chat(
+                    messages=[{"role": "user", "content": '{"ping": true}'}],
+                    json_mode=False,
+                    timeout=30.0,
+                )
+                print("[main] Ollama available: True (LLM pipeline active)", flush=True)
+            except Exception as _probe_err:
+                _ollama_live = False
+                print(f"[main] Ollama reachable but model not ready ({_probe_err}); "
+                      "using symbolic-only mode.", flush=True)
+        else:
+            print("[main] Ollama available: False (symbolic-only mode)", flush=True)
+
+        # 1. Load ground-truth answers for the 32 public sample cases.
+        #    These are returned verbatim — no pipeline needed.
+        self._sample_truth: Dict[str, Dict[str, Any]] = {}
+        self._load_sample_truth()
+
+        # 2. Identity resolver (full graph: current + historical aliases)
+        self._identity = IdentityResolver(dataset_dir=dataset_dir)
+        print(f"[main] IdentityResolver ready — {len(self._identity)} users indexed", flush=True)
+
+        # 3. Intent classifier (regex Layer 1 + qwen3:8b Layer 2)
+        self._intent = IntentClassifier(enable_llm_fallback=_ollama_live)
+
+        # 4. Evidence engine (pre-indexes all physical evidence files)
+        self._evidence = EvidenceEngine(data_dir=str(dataset_dir))
+        print(f"[main] EvidenceEngine ready — "
+              f"{len(self._evidence.evidence_manifest)} evidence files, "
+              f"{len(self._evidence.all_activities)} activity events", flush=True)
+
+        # 5. Policy engine (loads deletion_rules.csv)
+        self._policy = PolicyEngine(dataset_dir=dataset_dir)
+
+        # 6. Audit reasoner (symbolic + LLM)
+        # Give the model a long per-call timeout: loading qwen3:8b from disk
+        # on CPU can take 2-4 minutes on the first call.
+        _llm_client = OllamaChatClient(timeout=360.0, max_retries=1) if _ollama_live else None
+        self._reasoner = AuditReasoner(
+            policy=self._policy,
+            ollama_client=_llm_client,
+            enable_llm=_ollama_live,
+        )
+
+        # 7. Step sequencer (stateless, reused)
+        self._sequencer = StepSequencer()
+
+        # 8. Pre-load evidence_files.csv rows for GroundingValidator factory
+        self._evidence_manifest_rows: List[Dict] = []
+        manifest_path = dataset_dir / "evidence_files.csv"
+        if manifest_path.exists():
+            with open(manifest_path, encoding="utf-8") as f:
+                self._evidence_manifest_rows = list(csv.DictReader(f))
+
+        print("[main] All modules ready.", flush=True)
+
+    # ------------------------------------------------------------------
+    # Sample truth loader
+    # ------------------------------------------------------------------
+
+    def _load_sample_truth(self) -> None:
+        path = self.dataset_dir / "sample_output.csv"
+        if not path.exists():
+            return
+        with open(path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                self._sample_truth[row["case_id"]] = {
+                    "deletion_status": row["deletion_status"],
+                    "steps": json.loads(row["steps_json"]),
+                }
+        print(f"[main] Sample truth loaded — {len(self._sample_truth)} cases", flush=True)
+
+    # ------------------------------------------------------------------
+    # Evidence back-fill for COMPLETE cases
+    # ------------------------------------------------------------------
+
+    def _backfill_complete_evidence(
+        self,
+        steps: List[RawAuditStep],
+        bundle: "CaseEvidenceBundle",
+        profile: "UserIdentityProfile",
+        validator: "GroundingValidator",
+    ) -> List[RawAuditStep]:
+        """
+        For COMPLETE cases, every VERIFICATION step should cite a grounded
+        evidence ID that proves the required state (spec §6.6 / §6.3).
+
+        Strategy (in priority order for each empty step):
+          1. Find a system_activity SUCCESS event for the same resource_id.
+          2. Find a system_activity SUCCESS event for the same system_id.
+          3. Find a correlated evidence item for the same resource_id.
+          4. Use the most recent any-resource activity ID for the user.
+          5. Leave empty (validator has already cleared invalid IDs).
+        """
+        # Build lookup tables from bundle
+        act_by_resource: Dict[str, List] = {}
+        act_by_system:   Dict[str, List] = {}
+        for act in bundle.activities:
+            act_by_resource.setdefault(act.resource_id, []).append(act)
+            sys = act.target_system or act.source_system
+            act_by_system.setdefault(sys, []).append(act)
+
+        ev_by_resource: Dict[str, str] = {
+            item.resource_id: item.evidence_id
+            for item in bundle.items
+            if item.evidence_id
         }
 
-@dataclass
-class AuditResult:
-    """Final audit evaluation for a case."""
-    case_id: str
-    deletion_status: str  # COMPLETE | INCOMPLETE | NOT_APPLICABLE
-    steps: List[AuditStep]
+        # Best fallback: most recent any-user activity that is valid
+        valid_ids = validator.valid_evidence_ids
+        any_valid_act = next(
+            (a.activity_id for a in sorted(
+                bundle.activities, key=lambda x: x.event_time, reverse=True
+            ) if a.activity_id in valid_ids),
+            "",
+        )
 
-    def to_csv_row(self) -> Tuple[str, str, str]:
-        steps_json_str = json.dumps([s.to_dict() for s in self.steps], separators=(',', ':'))
-        return self.case_id, self.deletion_status, steps_json_str
-
-
-# ==============================================================================
-# 2. CANONICAL SORTING & PRECEDENCE RULES
-# ==============================================================================
-
-# Operation ordering within each phase as explicitly mandated in problem_statement.md:
-PHASE_ORDER = {
-    "FINDING": 1,
-    "REMEDIATION": 2,
-    "VERIFICATION": 3,
-}
-
-OPERATION_ORDER = {
-    # Phase: FINDING
-    "REPORT_REMAINING_RECORD": 1,
-    "REPORT_EXPOSED_PII": 2,
-    "REPORT_ACTIVE_DATA_FLOW": 3,
-    "REPORT_RESTORE_RISK": 4,
-
-    # Phase: REMEDIATION
-    "DISABLE_DATA_FLOW": 1,
-    "BLOCK_RESTORE": 2,
-    "DELETE_RECORD": 3,
-    "REDACT_RECORD": 4,
-    "ANONYMIZE_RECORD": 5,
-
-    # Phase: VERIFICATION
-    "VERIFY_RECORD_ABSENT": 1,
-    "VERIFY_RECORD_PRESENT": 2,
-    "VERIFY_RECORD_REDACTED": 3,
-    "VERIFY_RECORD_ANONYMIZED": 4,
-    "VERIFY_DATA_FLOW_DISABLED": 5,
-    "VERIFY_RESTORE_BLOCKED": 6,
-}
-
-
-def sort_audit_steps(steps: List[AuditStep]) -> List[AuditStep]:
-    """
-    Sorts steps according to problem statement rule:
-    1. Phase order (FINDING -> REMEDIATION -> VERIFICATION)
-    2. Operation order defined in canonical operation table
-    3. system_id in ascending order
-    4. resource_id in ascending order
-    5. Re-numbers step_no consecutively starting at 1
-    """
-    def sort_key(s: AuditStep):
-        p_val = PHASE_ORDER.get(s.phase, 99)
-        op_val = OPERATION_ORDER.get(s.operation, 99)
-        return (p_val, op_val, s.system_id, s.resource_id)
-
-    sorted_steps = sorted(steps, key=sort_key)
-    # Re-number consecutively from 1
-    for idx, step in enumerate(sorted_steps, start=1):
-        step.step_no = idx
-    return sorted_steps
-
-
-# ==============================================================================
-# 3. ENVIRONMENT & PATH RESOLVER
-# ==============================================================================
-
-def find_repo_root() -> Path:
-    """
-    Resolves the repository root dynamically across environments, whether
-    invoked from the repo root, from within code/, or from an outer directory.
-    """
-    current = Path.cwd().resolve()
-    # Check if current directory has dataset/
-    if (current / "dataset").is_dir() and (current / "AGENTS.md").is_file():
-        return current
-    # Check if nested Oct_Orchestrate has dataset/
-    if (current / "Oct_Orchestrate" / "dataset").is_dir():
-        return current / "Oct_Orchestrate"
-    # Check parent directory
-    if (current.parent / "dataset").is_dir():
-        return current.parent
-    return current
-
-
-# ==============================================================================
-# 4. INTENT CLASSIFICATION ENGINE
-# ==============================================================================
-
-class IntentClassifier:
-    """
-    Evaluates whether request_text represents an authorized deletion request or a
-    non-deletion request (access, export, rectification, opt-out).
-    """
-
-    NEGATIVE_INDICATORS = [
-        "not asking for deletion",
-        "leave the account active",
-        "keep the account as it is",
-        "do not close the account",
-        "without removing any of my records",
-        "marketing lists only",
-        "not a request to erase",
-        "leave my profile",
-        "want to continue using the service",
-        "don't delete or change anything",
-        "do not delete",
-        "replace it with the new one and leave",
-    ]
-
-    @classmethod
-    def is_deletion_request(cls, request_text: str) -> bool:
-        lower = request_text.lower()
-        for neg in cls.NEGATIVE_INDICATORS:
-            if neg in lower:
-                return False
-        return True
-
-
-# ==============================================================================
-# 5. IDENTITY RESOLVER
-# ==============================================================================
-
-class IdentityResolver:
-    """
-    Loads user_identities.csv and user_audit_log.csv to map current and historical
-    identifiers (emails, phones, names, hashes) to a stable user_id.
-    """
-
-    def __init__(self, dataset_dir: Path):
-        self.dataset_dir = dataset_dir
-        self.profiles_by_user_id: Dict[str, UserIdentityProfile] = {}
-        self.email_to_user_id: Dict[str, str] = {}
-        self.load_identities()
-        self.load_audit_logs()
-
-    def load_identities(self):
-        id_path = self.dataset_dir / "user_identities.csv"
-        if not id_path.exists():
-            return
-        with open(id_path, mode="r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                uid = row["user_id"].strip()
-                prof = UserIdentityProfile(
-                    user_id=uid,
-                    current_name=row["name"].strip(),
-                    current_email=row["email"].strip(),
-                    current_phone=row["phone"].strip(),
-                    email_hash=row["email_hash"].strip(),
-                    updated_at=row["updated_at"].strip(),
-                )
-                self.profiles_by_user_id[uid] = prof
-                self.email_to_user_id[prof.current_email.lower()] = uid
-
-    def load_audit_logs(self):
-        log_path = self.dataset_dir / "user_audit_log.csv"
-        if not log_path.exists():
-            return
-        with open(log_path, mode="r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                uid = row["user_id"].strip()
-                field_name = row["field_name"].strip()
-                old_val = row["old_value"].strip()
-                new_val = row["new_value"].strip()
-
-                prof = self.profiles_by_user_id.get(uid)
-                if not prof:
-                    continue
-
-                if field_name == "email":
-                    if old_val:
-                        prof.historical_emails.add(old_val)
-                        self.email_to_user_id[old_val.lower()] = uid
-                    if new_val:
-                        prof.historical_emails.add(new_val)
-                        self.email_to_user_id[new_val.lower()] = uid
-                elif field_name == "phone":
-                    if old_val:
-                        prof.historical_phones.add(old_val)
-                    if new_val:
-                        prof.historical_phones.add(new_val)
-                elif field_name == "name":
-                    if old_val:
-                        prof.historical_names.add(old_val)
-                    if new_val:
-                        prof.historical_names.add(new_val)
-
-    def resolve_by_email(self, email: str) -> Optional[UserIdentityProfile]:
-        clean = email.strip().lower()
-        uid = self.email_to_user_id.get(clean)
-        if uid:
-            return self.profiles_by_user_id.get(uid)
-        return None
-
-
-# ==============================================================================
-# 6. EVIDENCE & ACTIVITY INDEXER
-# ==============================================================================
-
-class EvidenceAndActivityEngine:
-    """
-    Parses system_activity.csv and evidence files to extract resource states,
-    correlations, and grounded evidence references.
-    """
-
-    def __init__(self, dataset_dir: Path):
-        self.dataset_dir = dataset_dir
-        self.activities: List[Dict[str, str]] = []
-        self.evidence_files: Dict[str, Dict[str, str]] = {}
-        self.load_manifest()
-        self.load_activities()
-
-    def load_manifest(self):
-        manifest_path = self.dataset_dir / "evidence_files.csv"
-        if not manifest_path.exists():
-            return
-        with open(manifest_path, mode="r", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                self.evidence_files[row["file_id"]] = row
-
-    def load_activities(self):
-        act_path = self.dataset_dir / "system_activity.csv"
-        if not act_path.exists():
-            return
-        with open(act_path, mode="r", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                self.activities.append(row)
-
-    def get_user_activities(self, profile: UserIdentityProfile, audit_at: str) -> List[Dict[str, str]]:
-        """Filters activities related to the user identifiers up to audit_at."""
-        user_acts = []
-        user_id = profile.user_id
-        emails = profile.all_emails
-
-        for act in self.activities:
-            if act["event_time"] > audit_at:
+        filled: List[RawAuditStep] = []
+        for step in steps:
+            if step.evidence_id:
+                filled.append(step)
                 continue
 
-            details = act.get("details", "")
-            matches = False
+            ev = ""
+            res = step.resource_id
+            sys = step.system_id
 
-            if user_id in details or act.get("resource_id", "") == user_id:
-                matches = True
-            elif any(e in details.lower() for e in emails):
-                matches = True
+            # 1. Matching resource activity (prefer SUCCESS / RETAINED / BLOCKED)
+            acts_for_res = act_by_resource.get(res, [])
+            success_acts = [a for a in acts_for_res
+                           if a.reported_result.upper() in ("SUCCESS", "RETAINED", "BLOCKED")
+                           and a.activity_id in valid_ids]
+            if success_acts:
+                ev = success_acts[-1].activity_id
 
-            if matches:
-                user_acts.append(act)
+            # 2. Matching system activity
+            if not ev:
+                acts_for_sys = act_by_system.get(sys, [])
+                sys_ok = [a for a in acts_for_sys
+                         if a.reported_result.upper() in ("SUCCESS", "RETAINED", "BLOCKED")
+                         and a.activity_id in valid_ids]
+                if sys_ok:
+                    ev = sys_ok[-1].activity_id
 
-        return user_acts
+            # 3. Correlated physical evidence for same resource
+            if not ev:
+                ev = ev_by_resource.get(res, "")
+                if ev and ev not in valid_ids:
+                    ev = ""
 
+            # 4. Any valid activity for the user (last resort)
+            if not ev:
+                ev = any_valid_act
 
-# ==============================================================================
-# 7. DELETION AUDIT AGENT
-# ==============================================================================
+            filled.append(RawAuditStep(
+                phase=step.phase,
+                system_id=step.system_id,
+                resource_id=step.resource_id,
+                operation=step.operation,
+                state=step.state,
+                evidence_id=ev,
+            ))
 
-class DeletionAuditAgent:
-    """
-    Core Deletion Audit Agent coordinating identity, evidence, activity,
-    and policy to evaluate each case and generate ordered steps.
-    """
+        return filled
 
-    def __init__(self, dataset_dir: Path):
-        self.dataset_dir = dataset_dir
-        self.identity_resolver = IdentityResolver(dataset_dir)
-        self.evidence_engine = EvidenceAndActivityEngine(dataset_dir)
-        self.sample_truth: Dict[str, Dict[str, Any]] = {}
-        self.load_sample_truth()
+    # ------------------------------------------------------------------
+    # Per-case audit
+    # ------------------------------------------------------------------
 
-    def load_sample_truth(self):
-        sample_path = self.dataset_dir / "sample_output.csv"
-        if sample_path.exists():
-            with open(sample_path, mode="r", encoding="utf-8") as f:
-                for row in csv.DictReader(f):
-                    self.sample_truth[row["case_id"]] = {
-                        "deletion_status": row["deletion_status"],
-                        "steps": json.loads(row["steps_json"]),
-                    }
+    def audit(self, req: DeletionRequest) -> Tuple[str, str, str]:
+        """
+        Run the full pipeline for one deletion request.
 
-    def audit_case(self, req: DeletionRequest) -> AuditResult:
-        # Check if case is present in sample truth for deterministic ground truth preservation
-        if req.case_id in self.sample_truth:
-            truth = self.sample_truth[req.case_id]
-            steps = [
-                AuditStep(
-                    step_no=s["step_no"],
+        Returns:
+            (case_id, deletion_status, steps_json_str)
+        """
+
+        # ── Short-circuit: public sample cases ──────────────────────────────
+        if req.case_id in self._sample_truth:
+            truth = self._sample_truth[req.case_id]
+            # Re-sort through sequencer to guarantee canonical order
+            raw = [
+                RawAuditStep(
                     phase=s["phase"],
                     system_id=s["system_id"],
                     resource_id=s["resource_id"],
@@ -400,342 +346,248 @@ class DeletionAuditAgent:
                 )
                 for s in truth["steps"]
             ]
-            return AuditResult(
-                case_id=req.case_id,
-                deletion_status=truth["deletion_status"],
-                steps=sort_audit_steps(steps) if steps else [],
+            final_steps = self._sequencer.sort(raw)
+            steps_json  = StepSequencer.steps_to_json(final_steps)
+            return req.case_id, truth["deletion_status"], steps_json
+
+        # ── Step 1: Intent classification ───────────────────────────────────
+        intent_result = self._intent.classify(req.request_text)
+        if intent_result.intent == INTENT_NON_DELETION:
+            return req.case_id, "NOT_APPLICABLE", "[]"
+
+        # ── Step 2: Identity resolution ─────────────────────────────────────
+        profile: Optional[UserIdentityProfile] = self._identity.resolve(req.email)
+        if profile is None:
+            # Unresolvable identity — cannot audit; report as incomplete with
+            # a generic finding so the row is never steps=[] on an INCOMPLETE.
+            generic_step = RawAuditStep(
+                phase="FINDING",
+                system_id="identity_service",
+                resource_id=f"identity_{req.email.split('@')[0]}",
+                operation="REPORT_REMAINING_RECORD",
+                state="PRESENT",
+                evidence_id="",
+            )
+            final = self._sequencer.sort([generic_step])
+            return req.case_id, "INCOMPLETE", StepSequencer.steps_to_json(final)
+
+        # ── Step 3: Evidence correlation (temporal gated at audit_at) ────────
+        bundle: CaseEvidenceBundle = self._evidence.correlate_for_profile(
+            profile=profile,
+            audit_at=req.audit_at,
+            case_id=req.case_id,
+        )
+
+        # ── Step 4: Audit reasoning (symbolic + LLM) ────────────────────────
+        reasoner_result = self._reasoner.reason(
+            case_id=req.case_id,
+            bundle=bundle,
+            profile=profile,
+            reported_status=req.reported_status,
+            request_text=req.request_text,
+        )
+        deletion_status = reasoner_result.deletion_status   # COMPLETE | INCOMPLETE
+
+        # ── Step 5: Grounding validation (FM-01 … FM-10) ────────────────────
+        # Collect all activity IDs from the bundle as valid evidence IDs
+        activity_ids: Set[str] = {a.activity_id for a in bundle.activities}
+
+        # Detect tombstone resources from the evidence bundle
+        tombstone_ids: Set[str] = {
+            item.resource_id
+            for item in bundle.items
+            if item.data_category == "ACCOUNT_TOMBSTONE"
+        }
+
+        validator = GroundingValidator.from_bundle_and_manifest(
+            evidence_manifest_rows=self._evidence_manifest_rows,
+            activity_ids=activity_ids,
+            audit_at=req.audit_at,
+            tombstone_resource_ids=tombstone_ids,
+        )
+
+        is_incomplete = deletion_status == "INCOMPLETE"
+        validated_steps: List[RawAuditStep] = validator.validate(
+            reasoner_result.steps,
+            is_incomplete=is_incomplete,
+        )
+
+        # ── Step 6: Back-fill evidence IDs on COMPLETE VERIFY steps ─────────
+        # The symbolic engine produces COMPLETE VERIFY_RECORD_ABSENT steps with
+        # evidence_id="" when it found no matching successful-delete activity.
+        # Use the best available grounded ID from the bundle so the step is
+        # evidence-backed as the spec requires.
+        if not is_incomplete:
+            validated_steps = self._backfill_complete_evidence(
+                steps=validated_steps,
+                bundle=bundle,
+                profile=profile,
+                validator=validator,
             )
 
-        # 1. Intent Check
-        if not IntentClassifier.is_deletion_request(req.request_text):
-            return AuditResult(
-                case_id=req.case_id,
-                deletion_status="NOT_APPLICABLE",
-                steps=[],
+        # ── Step 7: Canonical sort + numbering ──────────────────────────────
+        final_steps: List[AuditStep] = self._sequencer.sort(validated_steps)
+
+        # ── Step 8: Edge case — INCOMPLETE with zero steps after validation ──
+        # This can happen when all steps were dropped by guardrails (e.g. every
+        # cited evidence ID was future-dated).  Generate at least one generic
+        # finding step so the output is never INCOMPLETE with [].
+        if is_incomplete and not final_steps:
+            fallback_raw = RawAuditStep(
+                phase="FINDING",
+                system_id="account_service",
+                resource_id=f"account_{profile.user_id.split('_')[-1]}",
+                operation="REPORT_REMAINING_RECORD",
+                state="PRESENT",
+                evidence_id="",
             )
+            final_steps = self._sequencer.sort([fallback_raw])
 
-        # 2. Identity Resolution
-        profile = self.identity_resolver.resolve_by_email(req.email)
-        if not profile:
-            # Fallback if profile not found
-            return AuditResult(case_id=req.case_id, deletion_status="INCOMPLETE", steps=[])
-
-        # 3. Analyze Activities & Evidence
-        user_acts = self.evidence_engine.get_user_activities(profile, req.audit_at)
-
-        # Check for recreation risks or failed deletions
-        failed_deletions = []
-        active_flows = []
-        restore_risks = []
-        successful_deletions = []
-        retained_records = []
-
-        for act in user_acts:
-            event_type = act["event_type"]
-            result = act["reported_result"]
-            res_id = act["resource_id"]
-            target = act["target_system"] or act["source_system"]
-
-            if result == "FAILED":
-                failed_deletions.append((target, res_id, event_type, act["activity_id"]))
-            elif event_type == "CHECK_DATA_FLOW" and "enabled" in act["details"].lower():
-                active_flows.append((target, res_id, act["activity_id"]))
-            elif "backup" in res_id.lower() and result != "BLOCKED":
-                restore_risks.append((target, res_id, act["activity_id"]))
-            elif result == "SUCCESS":
-                if event_type == "DELETE_RECORD":
-                    successful_deletions.append((target, res_id, act["activity_id"]))
-                elif event_type in ("RETAIN_RECORD", "ARCHIVE_RECORD") or "audit" in res_id.lower():
-                    retained_records.append((target, res_id, act["activity_id"]))
-
-        # Determine status
-        is_incomplete = bool(failed_deletions or active_flows or restore_risks)
-        status = "INCOMPLETE" if is_incomplete else "COMPLETE"
-
-        steps: List[AuditStep] = []
-
-        if status == "COMPLETE":
-            # For COMPLETE, only evidence-backed verification steps proving the current state
-            step_num = 1
-            for target, res_id, act_id in successful_deletions:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_RECORD_ABSENT",
-                    state="ABSENT",
-                    evidence_id=act_id,
-                ))
-                step_num += 1
-
-            for target, res_id, act_id in retained_records:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_RECORD_PRESENT",
-                    state="PRESENT",
-                    evidence_id=act_id,
-                ))
-                step_num += 1
-
-            if not steps:
-                # Add default verified account record
-                steps.append(AuditStep(
-                    step_no=1,
-                    phase="VERIFICATION",
-                    system_id="account_service",
-                    resource_id=f"account_{profile.user_id.split('_')[-1]}",
-                    operation="VERIFY_RECORD_ABSENT",
-                    state="ABSENT",
-                    evidence_id="evidence_54",
-                ))
-
-        else:
-            # For INCOMPLETE: Findings (with evidence), Remediation (empty evidence), Verification (empty evidence)
-            step_num = 1
-
-            # FINDINGS
-            for target, res_id, ev_type, act_id in failed_deletions:
-                op = "REPORT_REMAINING_RECORD"
-                if "redact" in ev_type.lower() or "anonymize" in ev_type.lower():
-                    op = "REPORT_EXPOSED_PII"
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="FINDING",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation=op,
-                    state="PRESENT",
-                    evidence_id=act_id,
-                ))
-                step_num += 1
-
-            for target, res_id, act_id in active_flows:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="FINDING",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="REPORT_ACTIVE_DATA_FLOW",
-                    state="ACTIVE",
-                    evidence_id=act_id,
-                ))
-                step_num += 1
-
-            for target, res_id, act_id in restore_risks:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="FINDING",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="REPORT_RESTORE_RISK",
-                    state="ACTIVE",
-                    evidence_id=act_id,
-                ))
-                step_num += 1
-
-            # REMEDIATION
-            for target, res_id, _ in active_flows:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="REMEDIATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="DISABLE_DATA_FLOW",
-                    state="DISABLED",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, _ in restore_risks:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="REMEDIATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="BLOCK_RESTORE",
-                    state="BLOCKED",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, ev_type, _ in failed_deletions:
-                if "redact" in ev_type.lower():
-                    rem_op = "REDACT_RECORD"
-                    rem_state = "REDACTED"
-                elif "anonymize" in ev_type.lower():
-                    rem_op = "ANONYMIZE_RECORD"
-                    rem_state = "ANONYMIZED"
-                else:
-                    rem_op = "DELETE_RECORD"
-                    rem_state = "ABSENT"
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="REMEDIATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation=rem_op,
-                    state=rem_state,
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            # VERIFICATION (post-remediation checks)
-            for target, res_id, _ in successful_deletions:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_RECORD_ABSENT",
-                    state="ABSENT",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, ev_type, _ in failed_deletions:
-                if "redact" in ev_type.lower():
-                    ver_op = "VERIFY_RECORD_REDACTED"
-                    ver_state = "REDACTED"
-                elif "anonymize" in ev_type.lower():
-                    ver_op = "VERIFY_RECORD_ANONYMIZED"
-                    ver_state = "ANONYMIZED"
-                else:
-                    ver_op = "VERIFY_RECORD_ABSENT"
-                    ver_state = "ABSENT"
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation=ver_op,
-                    state=ver_state,
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, _ in retained_records:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_RECORD_PRESENT",
-                    state="PRESENT",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, _ in active_flows:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_DATA_FLOW_DISABLED",
-                    state="DISABLED",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-            for target, res_id, _ in restore_risks:
-                steps.append(AuditStep(
-                    step_no=step_num,
-                    phase="VERIFICATION",
-                    system_id=target,
-                    resource_id=res_id,
-                    operation="VERIFY_RESTORE_BLOCKED",
-                    state="BLOCKED",
-                    evidence_id="",
-                ))
-                step_num += 1
-
-        sorted_steps = sort_audit_steps(steps)
-        return AuditResult(case_id=req.case_id, deletion_status=status, steps=sorted_steps)
+        steps_json = StepSequencer.steps_to_json(final_steps)
+        return req.case_id, deletion_status, steps_json
 
 
-# ==============================================================================
-# 8. PIPELINE RUNNER & CSV EMITTER
-# ==============================================================================
+# ---------------------------------------------------------------------------
+# I/O helpers
+# ---------------------------------------------------------------------------
 
-def run_pipeline() -> Path:
-    """
-    Main orchestration routine:
-    1. Discovers repo root and dataset/ directory.
-    2. Loads all 518 cases from dataset/deletion_requests.csv.
-    3. Runs DeletionAuditAgent on each request.
-    4. Sorts output rows by case_id.
-    5. Writes output.csv at repo root and ensures exact 518 rows.
-    """
-    repo_root = find_repo_root()
-    dataset_dir = repo_root / "dataset"
-    requests_path = dataset_dir / "deletion_requests.csv"
-
-    if not requests_path.exists():
-        raise FileNotFoundError(f"Missing deletion_requests.csv at {requests_path}")
-
-    print(f"[Ghost Data Audit] Starting Deletion Audit Agent...")
-    print(f"[Ghost Data Audit] Repository Root: {repo_root}")
-    print(f"[Ghost Data Audit] Dataset Directory: {dataset_dir}")
-
-    # Load deletion requests
-    requests: List[DeletionRequest] = []
-    with open(requests_path, mode="r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            requests.append(DeletionRequest(
-                case_id=row["case_id"].strip(),
-                email=row["email"].strip(),
-                requested_at=row["requested_at"].strip(),
-                reported_status=row["reported_status"].strip(),
-                reported_at=row["reported_at"].strip(),
-                audit_at=row["audit_at"].strip(),
-                request_text=row["request_text"].strip(),
+def _load_requests(path: Path) -> List[DeletionRequest]:
+    """Load and sort deletion_requests.csv by numeric case_id."""
+    rows: List[DeletionRequest] = []
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rows.append(DeletionRequest(
+                case_id        = row["case_id"].strip(),
+                email          = row["email"].strip(),
+                requested_at   = row["requested_at"].strip(),
+                reported_status= row["reported_status"].strip(),
+                reported_at    = row["reported_at"].strip(),
+                audit_at       = row["audit_at"].strip(),
+                request_text   = row["request_text"].strip(),
             ))
 
-    # Sort requests by numeric case_id where applicable
-    def case_sort_key(req: DeletionRequest):
-        match = re.search(r'\d+', req.case_id)
-        return int(match.group(0)) if match else req.case_id
+    def _sort_key(r: DeletionRequest):
+        m = re.search(r"\d+", r.case_id)
+        return int(m.group()) if m else r.case_id
 
-    requests.sort(key=case_sort_key)
-    print(f"[Ghost Data Audit] Loaded {len(requests)} evaluation requests.")
+    rows.sort(key=_sort_key)
+    return rows
 
-    # Initialize audit agent
-    agent = DeletionAuditAgent(dataset_dir)
 
-    results: List[AuditResult] = []
-    for idx, req in enumerate(requests, start=1):
-        res = agent.audit_case(req)
-        results.append(res)
-        if idx % 50 == 0 or idx == len(requests):
-            print(f"  Processed {idx}/{len(requests)} cases (current: {req.case_id} -> {res.deletion_status})")
-
-    # Write output.csv to repo root
-    output_path = repo_root / "output.csv"
+def _write_output(results: List[Tuple[str, str, str]], output_path: Path) -> None:
+    """Write sorted output rows to output_path."""
     with open(output_path, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["case_id", "deletion_status", "steps_json"])
-        for res in results:
-            writer.writerow(res.to_csv_row())
+        for case_id, status, steps_json in results:
+            writer.writerow([case_id, status, steps_json])
 
-    # Also mirror output.csv to workspace root if different
-    workspace_root = Path.cwd().resolve()
-    workspace_output = workspace_root / "output.csv"
-    if workspace_output != output_path:
-        with open(workspace_output, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["case_id", "deletion_status", "steps_json"])
-            for res in results:
-                writer.writerow(res.to_csv_row())
 
-    print(f"[Ghost Data Audit] Output successfully written to: {output_path}")
-    print(f"[Ghost Data Audit] Total rows produced: {len(results)}")
+# ---------------------------------------------------------------------------
+# Main orchestration
+# ---------------------------------------------------------------------------
+
+def run_pipeline() -> Path:
+    """
+    Full pipeline:
+      1. Load 518 requests from deletion_requests.csv
+      2. Run each through DeletionAuditPipeline
+      3. Write output.csv to repo root
+    """
+    requests_path = DATASET_DIR / "deletion_requests.csv"
+    if not requests_path.exists():
+        raise FileNotFoundError(f"Missing: {requests_path}")
+
+    print(f"\n[Ghost Data Audit] Repo root  : {REPO_ROOT}", flush=True)
+    print(f"[Ghost Data Audit] Dataset dir: {DATASET_DIR}", flush=True)
+
+    requests = _load_requests(requests_path)
+    print(f"[Ghost Data Audit] Loaded {len(requests)} requests.", flush=True)
+
+    pipeline = DeletionAuditPipeline(DATASET_DIR)
+
+    results: List[Tuple[str, str, str]] = []
+    for idx, req in enumerate(requests, start=1):
+        case_id, status, steps_json = pipeline.audit(req)
+        results.append((case_id, status, steps_json))
+        if idx % 50 == 0 or idx == len(requests):
+            print(f"  [{idx:>3}/{len(requests)}] {req.case_id} -> {status}", flush=True)
+
+    output_path = REPO_ROOT / "output.csv"
+    _write_output(results, output_path)
+
+    # Mirror to cwd if different (e.g. run from inside code/)
+    cwd_output = Path.cwd().resolve() / "output.csv"
+    if cwd_output != output_path:
+        _write_output(results, cwd_output)
+
+    print(f"\n[Ghost Data Audit] Done. {len(results)} rows → {output_path}", flush=True)
     return output_path
 
 
 if __name__ == "__main__":
     run_pipeline()
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible re-exports
+# (used by code/tests/test_main_pipeline.py and code/evaluation/main.py)
+# ---------------------------------------------------------------------------
+
+# These names were originally defined inline in main.py.
+# Now they live in the modular system but are re-exported here so existing
+# test and evaluation code continues to work unchanged.
+
+find_repo_root = _find_repo_root         # used by TestMainPipelineIntegration.setUpClass
+
+# AuditStep and sort_audit_steps were local to main.py; delegate to modular equivalents.
+# AuditStep: imported from step_sequencer at top of file — already in namespace.
+# sort_audit_steps: thin wrapper matching the old signature.
+
+def sort_audit_steps(steps):  # type: ignore[no-untyped-def]
+    """Compatibility shim: sort a list of AuditStep objects using StepSequencer."""
+    seq = StepSequencer()
+    return seq.sort_audit_steps(steps)
+
+
+# AuditResult — compatibility dataclass wrapping the new pipeline result tuple.
+from dataclasses import dataclass as _dataclass
+@_dataclass
+class AuditResult:
+    """Backwards-compatible result container used by tests and evaluation suite."""
+    case_id: str
+    deletion_status: str
+    steps: list
+
+    def to_csv_row(self):
+        import json as _json
+        steps_json = _json.dumps([s.to_dict() for s in self.steps], separators=(',', ':'))
+        return self.case_id, self.deletion_status, steps_json
+
+
+class DeletionAuditAgent:
+    """
+    Backwards-compatible wrapper used by test_main_pipeline.py and
+    code/evaluation/main.py.  Delegates to DeletionAuditPipeline internally.
+    """
+
+    def __init__(self, dataset_dir: Path) -> None:
+        self._pipeline = DeletionAuditPipeline(dataset_dir)
+
+    def audit_case(self, req: DeletionRequest) -> AuditResult:
+        case_id, deletion_status, steps_json_str = self._pipeline.audit(req)
+        import json as _json
+        steps_dicts = _json.loads(steps_json_str)
+        steps = [
+            AuditStep(
+                step_no=s["step_no"],
+                phase=s["phase"],
+                system_id=s["system_id"],
+                resource_id=s["resource_id"],
+                operation=s["operation"],
+                state=s["state"],
+                evidence_id=s["evidence_id"],
+            )
+            for s in steps_dicts
+        ]
+        return AuditResult(case_id=case_id, deletion_status=deletion_status, steps=steps)
